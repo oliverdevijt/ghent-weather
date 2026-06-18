@@ -1,3 +1,5 @@
+import urllib.request
+import json
 from datetime import date, timedelta, datetime, timezone
 
 
@@ -53,3 +55,37 @@ def build_ics(forecast: list[tuple[date, int, int]]) -> str:
         ]
     lines.append("END:VCALENDAR")
     return "\r\n".join(lines) + "\r\n"
+
+
+def fetch_forecast(lat: float, lon: float, days: int = 14) -> list[tuple[date, int, int]]:
+    url = (
+        f"https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lat}&longitude={lon}"
+        f"&daily=temperature_2m_max,weathercode"
+        f"&forecast_days={days}"
+        f"&timezone=Europe%2FBrussels"
+    )
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        data = json.loads(resp.read())
+
+    daily = data["daily"]
+    return [
+        (date.fromisoformat(d), round(t), c)
+        for d, t, c in zip(
+            daily["time"],
+            daily["temperature_2m_max"],
+            daily["weathercode"],
+        )
+    ]
+
+
+def main() -> None:
+    forecast = fetch_forecast(51.05, 3.72, days=14)
+    ics = build_ics(forecast)
+    with open("weather.ics", "w", encoding="utf-8", newline="") as f:
+        f.write(ics)
+    print(f"Written {len(forecast)} events to weather.ics")
+
+
+if __name__ == "__main__":
+    main()

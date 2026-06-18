@@ -66,3 +66,29 @@ def test_ics_fourteen_events():
     days = [(start + timedelta(days=i), 20 + i, 0) for i in range(14)]
     ics = build_ics(days)
     assert ics.count("BEGIN:VEVENT") == 14
+
+
+from unittest.mock import patch, MagicMock
+import json
+from generate import fetch_forecast
+
+MOCK_RESPONSE = {
+    "daily": {
+        "time": ["2026-06-18", "2026-06-19"],
+        "temperature_2m_max": [21.4, 18.9],
+        "weathercode": [1, 61],
+    }
+}
+
+def test_fetch_forecast_returns_parsed_tuples():
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps(MOCK_RESPONSE).encode()
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        result = fetch_forecast(51.05, 3.72, days=2)
+
+    assert len(result) == 2
+    assert result[0] == (date(2026, 6, 18), 21, 1)
+    assert result[1] == (date(2026, 6, 19), 19, 61)

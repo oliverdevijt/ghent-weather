@@ -34,3 +34,35 @@ def test_thunderstorm():
 
 def test_unknown_code_falls_back():
     assert wmo_icon(999) == "🌡️"
+
+
+from datetime import date
+from generate import build_ics
+
+def test_ics_contains_vcalendar_wrapper():
+    ics = build_ics([])
+    assert ics.startswith("BEGIN:VCALENDAR")
+    assert ics.strip().endswith("END:VCALENDAR")
+
+def test_ics_single_event_summary():
+    ics = build_ics([(date(2026, 6, 18), 22, 0)])
+    assert "SUMMARY:☀️ 22°C" in ics
+
+def test_ics_single_event_uid():
+    ics = build_ics([(date(2026, 6, 18), 22, 0)])
+    assert "UID:ghent-weather-2026-06-18@oliverdevijt.github.io" in ics
+
+def test_ics_single_event_dtstart():
+    ics = build_ics([(date(2026, 6, 18), 22, 0)])
+    assert "DTSTART;VALUE=DATE:20260618" in ics
+
+def test_ics_single_event_dtend_next_day():
+    ics = build_ics([(date(2026, 6, 18), 22, 0)])
+    assert "DTEND;VALUE=DATE:20260619" in ics
+
+def test_ics_fourteen_events():
+    from datetime import timedelta
+    start = date(2026, 6, 18)
+    days = [(start + timedelta(days=i), 20 + i, 0) for i in range(14)]
+    ics = build_ics(days)
+    assert ics.count("BEGIN:VEVENT") == 14

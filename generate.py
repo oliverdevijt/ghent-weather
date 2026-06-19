@@ -29,13 +29,41 @@ def wmo_icon(code: int) -> str:
     return "🌡️"
 
 
-def build_ics(forecast: list[tuple[date, int, int]]) -> str:
+def parse_sequences(ics_path: str) -> dict[str, tuple[int, str]]:
+    """Return {uid: (sequence, summary)} from an existing ICS file."""
+    result: dict[str, tuple[int, str]] = {}
+    try:
+        with open(ics_path, encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        return result
+    for block in content.split("BEGIN:VEVENT"):
+        if "END:VEVENT" not in block:
+            continue
+        uid = seq = summary = None
+        for line in block.splitlines():
+            if line.startswith("UID:"):
+                uid = line[4:].strip()
+            elif line.startswith("SEQUENCE:"):
+                seq = int(line[9:].strip())
+            elif line.startswith("SUMMARY:"):
+                summary = line[8:].strip()
+        if uid and summary is not None:
+            result[uid] = (seq or 0, summary)
+    return result
+
+
+def build_ics(
+    forecast: list[tuple[date, int, int]],
+    prev: dict[str, tuple[int, str]] | None = None,
+) -> str:
     now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//oliverdevijt//ghent-weather//EN",
         "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
         "X-WR-CALNAME:Ghent Weather",
         "X-WR-TIMEZONE:Europe/Brussels",
     ]
@@ -44,13 +72,18 @@ def build_ics(forecast: list[tuple[date, int, int]]) -> str:
         dtend = (day + timedelta(days=1)).strftime("%Y%m%d")
         uid = f"ghent-weather-{day.isoformat()}@oliverdevijt.github.io"
         icon = wmo_icon(code)
+        summary = f"{icon} {temp_max}°C"
+        old_seq, old_summary = (prev or {}).get(uid, (0, None))
+        sequence = old_seq + 1 if old_summary is not None and old_summary != summary else old_seq
         lines += [
             "BEGIN:VEVENT",
             f"UID:{uid}",
             f"DTSTAMP:{now}",
+            f"LAST-MODIFIED:{now}",
             f"DTSTART;VALUE=DATE:{dtstart}",
             f"DTEND;VALUE=DATE:{dtend}",
-            f"SUMMARY:{icon} {temp_max}°C",
+            f"SEQUENCE:{sequence}",
+            f"SUMMARY:{summary}",
             "END:VEVENT",
         ]
     lines.append("END:VCALENDAR")
@@ -80,9 +113,11 @@ def fetch_forecast(lat: float, lon: float, days: int = 14) -> list[tuple[date, i
 
 
 def main() -> None:
+    ics_path = "weather.ics"
+    prev = parse_sequences(ics_path)
     forecast = fetch_forecast(51.05, 3.72, days=14)
-    ics = build_ics(forecast)
-    with open("weather.ics", "w", encoding="utf-8", newline="") as f:
+    ics = build_ics(forecast, prev)
+    with open(ics_path, "w", encoding="utf-8", newline="") as f:
         f.write(ics)
     print(f"Written {len(forecast)} events to weather.ics")
 

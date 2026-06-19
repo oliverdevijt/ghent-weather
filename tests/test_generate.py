@@ -1,4 +1,4 @@
-import sys, os
+import sys, os, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from generate import wmo_icon
 
@@ -37,12 +37,31 @@ def test_unknown_code_falls_back():
 
 
 from datetime import date
-from generate import build_ics
+from generate import build_ics, parse_sequences
+
+
+def test_parse_sequences_empty_on_missing_file():
+    assert parse_sequences("/nonexistent/path.ics") == {}
+
+
+def test_parse_sequences_roundtrip():
+    ics = build_ics([(date(2026, 6, 18), 22, 0)])
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".ics", delete=False) as f:
+        f.write(ics)
+        path = f.name
+    result = parse_sequences(path)
+    uid = "ghent-weather-2026-06-18@oliverdevijt.github.io"
+    assert uid in result
+    assert result[uid] == (0, "☀️ 22°C")
 
 def test_ics_contains_vcalendar_wrapper():
     ics = build_ics([])
     assert ics.startswith("BEGIN:VCALENDAR")
     assert ics.strip().endswith("END:VCALENDAR")
+
+def test_ics_method_publish():
+    ics = build_ics([])
+    assert "METHOD:PUBLISH" in ics
 
 def test_ics_single_event_summary():
     ics = build_ics([(date(2026, 6, 18), 22, 0)])
@@ -59,6 +78,26 @@ def test_ics_single_event_dtstart():
 def test_ics_single_event_dtend_next_day():
     ics = build_ics([(date(2026, 6, 18), 22, 0)])
     assert "DTEND;VALUE=DATE:20260619" in ics
+
+def test_ics_last_modified_present():
+    ics = build_ics([(date(2026, 6, 18), 22, 0)])
+    assert "LAST-MODIFIED:" in ics
+
+def test_ics_sequence_zero_on_first_write():
+    ics = build_ics([(date(2026, 6, 18), 22, 0)])
+    assert "SEQUENCE:0" in ics
+
+def test_ics_sequence_increments_on_change():
+    uid = "ghent-weather-2026-06-18@oliverdevijt.github.io"
+    prev = {uid: (0, "☀️ 20°C")}
+    ics = build_ics([(date(2026, 6, 18), 22, 0)], prev)
+    assert "SEQUENCE:1" in ics
+
+def test_ics_sequence_stable_when_unchanged():
+    uid = "ghent-weather-2026-06-18@oliverdevijt.github.io"
+    prev = {uid: (2, "☀️ 22°C")}
+    ics = build_ics([(date(2026, 6, 18), 22, 0)], prev)
+    assert "SEQUENCE:2" in ics
 
 def test_ics_fourteen_events():
     from datetime import timedelta
